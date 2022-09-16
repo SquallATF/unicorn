@@ -9,7 +9,8 @@
 
 // code to be emulated
 #define MIPS_CODE_EB "\x34\x21\x34\x56" // ori $at, $at, 0x3456;
-#define MIPS_CODE_EL "\x56\x34\x21\x34" // ori $at, $at, 0x3456;
+// #define MIPS_CODE_EL "\x56\x34\x21\x34" // ori $at, $at, 0x3456;
+#define MIPS_CODE_EL "\xE0\x48\x09\x7C" // wsbw $t1, $t1
 
 // memory address where emulation starts
 #define ADDRESS 0x10000
@@ -79,7 +80,8 @@ static void test_mips_el(void)
     uc_err err;
     uc_hook trace1, trace2;
 
-    int r1 = 0x6789;     // R1 register
+    // int r1 = 0x6789;     // R1 register
+    int r9 = 0x12345678;
 
     printf("===========================\n");
     printf("Emulate MIPS code (little-endian)\n");
@@ -99,7 +101,7 @@ static void test_mips_el(void)
     uc_mem_write(uc, ADDRESS, MIPS_CODE_EL, sizeof(MIPS_CODE_EL) - 1);
 
     // initialize machine registers
-    uc_reg_write(uc, UC_MIPS_REG_1, &r1);
+    uc_reg_write(uc, UC_MIPS_REG_9, &r9);
 
     // tracing all basic blocks with customized callback
     uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, hook_block, NULL, 1, 0);
@@ -117,8 +119,8 @@ static void test_mips_el(void)
     // now print out some registers
     printf(">>> Emulation done. Below is the CPU context\n");
 
-    uc_reg_read(uc, UC_MIPS_REG_1, &r1);
-    printf(">>> R1 = 0x%x\n", r1);
+    uc_reg_read(uc, UC_MIPS_REG_9, &r9);
+    printf(">>> R1 = 0x%x\n", r9);
 
     uc_close(uc);
 }
