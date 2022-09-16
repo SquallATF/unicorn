@@ -212,6 +212,8 @@ enum {
     OPC_NOR      = 0x27 | OPC_SPECIAL,
     OPC_SLT      = 0x2A | OPC_SPECIAL,
     OPC_SLTU     = 0x2B | OPC_SPECIAL,
+    OPC_MAX      = 0x2C | OPC_SPECIAL,
+    OPC_MIN      = 0x2D | OPC_SPECIAL,
     OPC_DADD     = 0x2C | OPC_SPECIAL,
     OPC_DADDU    = 0x2D | OPC_SPECIAL,
     OPC_DSUB     = 0x2E | OPC_SPECIAL,
@@ -459,6 +461,7 @@ enum {
 
 enum {
     OPC_WSBH      = (0x02 << 6) | OPC_BSHFL,
+    OPC_WSBW      = (0x03 << 6) | OPC_BSHFL,
     OPC_SEB       = (0x10 << 6) | OPC_BSHFL,
     OPC_SEH       = (0x18 << 6) | OPC_BSHFL,
     OPC_ALIGN     = (0x08 << 6) | OPC_BSHFL, /* 010.bp (010.00 to 010.11) */
@@ -4355,6 +4358,32 @@ static void gen_slt(DisasContext *ctx, uint32_t opc,
     tcg_temp_free(tcg_ctx, t1);
 }
 
+static void gen_maxmin(DisasContext* ctx, uint32_t opc,
+                       int rd, int rs, int rt)
+{
+    TCGContext* tcg_ctx = ctx->uc->tcg_ctx;
+    const char* opn = "max";
+    TCGv t0, t1;
+    t0 = tcg_temp_new(tcg_ctx);
+    t1 = tcg_temp_new(tcg_ctx);
+    gen_load_gpr(tcg_ctx, t0, rs);
+    gen_load_gpr(tcg_ctx, t1, rt);
+    switch (opc) {
+    case OPC_MAX:
+        tcg_gen_movcond_i32(tcg_ctx, TCG_COND_LT, tcg_ctx->cpu_gpr[rd], t0, t1, t1, t0);
+        opn = "max";
+        break;
+    case OPC_MIN:
+        tcg_gen_movcond_i32(tcg_ctx, TCG_COND_LT, tcg_ctx->cpu_gpr[rd], t0, t1, t0, t1);
+        opn = "min";
+        break;
+    }
+    (void)opn; /* avoid a compiler warning */
+    LOG_DISAS("%s %s, %s, %s", opn, regnames[rd], regnames[rs], regnames[rt]);
+    tcg_temp_free(tcg_ctx, t0);
+    tcg_temp_free(tcg_ctx, t1);
+}
+
 /* Shifts */
 static void gen_shift(DisasContext *ctx, uint32_t opc,
                       int rd, int rs, int rt)
@@ -6501,6 +6530,23 @@ static void gen_bshfl(DisasContext *ctx, uint32_t op2, int rt, int rd)
             tcg_temp_free(tcg_ctx, t2);
             tcg_temp_free(tcg_ctx, t1);
             tcg_gen_ext32s_tl(tcg_ctx, tcg_ctx->cpu_gpr[rd], t0);
+        }
+        break;
+    case OPC_WSBW:
+        {
+            TCGv t1 = tcg_temp_new(tcg_ctx);
+            TCGv_i32 t2 = tcg_temp_new_i32(tcg_ctx);
+
+            tcg_gen_shri_tl(tcg_ctx, t1, t0, 8);
+            tcg_gen_andi_tl(tcg_ctx, t1, t1, 0x00FF00FF);
+            tcg_gen_shli_tl(tcg_ctx, t0, t0, 8);
+            tcg_gen_andi_tl(tcg_ctx, t0, t0, ~0x00FF00FF);
+            tcg_gen_or_tl(tcg_ctx, t0, t0, t1);
+            tcg_temp_free(tcg_ctx, t1);
+            tcg_gen_trunc_tl_i32(tcg_ctx, t2, t0);
+            tcg_gen_rotri_i32(tcg_ctx, t2, t2, 16);
+            tcg_gen_ext_i32_tl(tcg_ctx, tcg_ctx->cpu_gpr[rt], t2);
+            tcg_temp_free_i32(tcg_ctx, t2);
         }
         break;
     case OPC_SEB:
@@ -24621,6 +24667,11 @@ static void decode_opc_special(CPUMIPSState *env, DisasContext *ctx)
     case OPC_SLTU:
         gen_slt(ctx, op1, rd, rs, rt);
         break;
+#if !defined(TARGET_MIPS64)
+    case OPC_MAX:
+    case OPC_MIN:
+        gen_maxmin(ctx, op1, rd, rs, rt);
+#endif
     case OPC_AND:          /* Logic*/
     case OPC_OR:
     case OPC_NOR:
